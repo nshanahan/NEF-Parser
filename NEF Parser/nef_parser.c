@@ -33,8 +33,8 @@ const char banner[] = "**********************************************\n"
 /******************************************************************
                         Macros
 *******************************************************************/
-//#define nef_debug_print(...) printf(__VA_ARGS__)
-#define nef_debug_print(...)
+#define nef_debug_print(...) printf(__VA_ARGS__)
+//#define nef_debug_print(...)
 
 /******************************************************************
                         Function Prototypes
@@ -103,76 +103,76 @@ int main(int argc, char** argv)
                 else
                 {
                     nef_debug_print("Valid NEF File.\n");
-                    uint16_t ifd0_entries = *((uint16_t*)&buffer[nef_header->ifd0_offset]);
-                    nef_debug_print("IFD0 Entries = %d\n", ifd0_entries);
-                    offset = sizeof(nef_header_t) + sizeof(uint16_t);
-                    struct ifd_entry_t* entry = (struct ifd_entry_t*)&buffer[offset];
+                    
+                    struct ifd_t* ifd0 = (struct ifd_t*)&buffer[nef_header->ifd0_offset];
+                    nef_debug_print("IFD0 Entries = %d\n", ifd0->entries);
                     uint32_t subifd_offset = 0;
                     uint32_t exif_offset = 0;
 
-                    for (unsigned i = 0; i < ifd0_entries; ++i)
+                    for (unsigned i = 0; i < ifd0->entries; ++i)
                     {
-                        switch (entry->tag)
+                        printf("IFD0 Tag = 0x%04X\n", ifd0->entry[i].tag);
+                        
+                        switch (ifd0->entry[i].tag)
                         {
                         case EXIF_TAG_EXIF_OFFSET:
-                            exif_offset = entry->value;
+                            exif_offset = ifd0->entry[i].value;
                             break;
                         case EXIF_TAG_MODEL:
                         {
                             // Limit variable scope to this case
-                            char* model = (char*)&buffer[entry->value];
-                            model[--entry->count] = '\0';
+                            char* model = (char*)&buffer[ifd0->entry[i].value];
+                            model[--ifd0->entry[i].count] = '\0';
                             printf("Camera Model = %s\n", model);
                             break;
                         }
                         case EXIF_TAG_SUBIFD_OFFSET:
                             // Entry word count determines if value is an offset or the actual value
-                            subifd_offset = (entry->count > 2) ? *((uint32_t*)&buffer[entry->value]) : entry->value;
+                            subifd_offset = (ifd0->entry[i].count > 2) ? *((uint32_t*)&buffer[ifd0->entry[i].value]) : ifd0->entry[i].value;
                             nef_debug_print("Sub-IFD Offset = 0x%08X\n", subifd_offset);
                             break;
                         default:
                             break;
                         }
-
-                        entry++;
                     }
 
                     // Sub-IFD stores the image as a lossy jpeg
                     // Calculate number of sub-IFD entries
-                    uint16_t subifd_entries = *((uint16_t*)&buffer[subifd_offset]);
-                    nef_debug_print("Sub-IFD Entries = %d\n", subifd_entries);
-                    offset = subifd_offset + sizeof(uint16_t);
-                    entry = (struct ifd_entry_t*)&buffer[offset];
-
-                    for (unsigned i = 0; i < subifd_entries; ++i)
+                    struct ifd_t* subifd = (struct ifd_t*)&buffer[subifd_offset];                
+                    nef_debug_print("Sub-IFD Entries = %d\n", subifd->entries);
+              
+                    for (unsigned i = 0; i < subifd->entries; ++i)
                     {
                         //TODO: Anything useful to do here?
-                        entry++;
+                        printf("Sub-IFD Tag = 0x%04X\n", subifd->entry[i].tag);
                     }
 
                     // Next IFD offset is located after the last IFD entry
-                    offset = sizeof(nef_header_t) + sizeof(uint16_t) + (ifd0_entries * sizeof(struct ifd_entry_t));
+                    offset = sizeof(nef_header_t) + sizeof(uint16_t) + (ifd0->entries * sizeof(struct ifd_entry_t));
                     uint32_t next_ifd_offset = *((uint32_t*)&buffer[offset]);
 
                     if (next_ifd_offset == 0)
                     {
                         nef_debug_print("No other IFD discovered.\n");
                     }
+                    else
+                    {
+                        nef_debug_print("Discovered an additional IFD.\n");
+                        //TODO: Process IFD
+                    }
 
-                    uint16_t exif_entries = *((uint16_t*)&buffer[exif_offset]);
-                    nef_debug_print("EXIF IFD Entries = %d\n", exif_entries);
-                    offset = exif_offset + sizeof(uint16_t);
-                    entry = (struct ifd_entry_t*)&buffer[offset];
+                    struct ifd_t* exif = (struct ifd_t*)&buffer[exif_offset];
+                    nef_debug_print("EXIF IFD Entries = %d\n", exif->entries);
                     uint32_t makernote_offset = 0;
 
-                    for (unsigned i = 0; i < exif_entries; ++i)
+                    for (unsigned i = 0; i < exif->entries; ++i)
                     {
-                        if (entry->tag == EXIF_TAG_MAKERNOTE)
-                        {
-                            makernote_offset = entry->value;
-                        }
+                        printf("EXIF Tag = 0x%04X\n", exif->entry[i].tag);
 
-                        entry++;
+                        if (exif->entry[i].tag == EXIF_TAG_MAKERNOTE)
+                        {
+                            makernote_offset = exif->entry[i].value;
+                        }
                     }
 
                     struct makernote_header_t* makernote_header = (struct makernote_header_t*)&buffer[makernote_offset];
@@ -183,39 +183,38 @@ int main(int argc, char** argv)
                     if (strcmp(makernote_header->magic_value, MAKERNOTE_MAGIC) == 0)
                     {
                         offset = makernote_offset + sizeof(struct makernote_header_t);
-                        uint16_t makernote_entries = *((uint16_t*)&buffer[offset]);
-                        nef_debug_print("Makernote IFD Entries = %d\n", makernote_entries);
-                        offset = makernote_offset + sizeof(struct makernote_header_t) + sizeof(uint16_t);
-                        entry = (struct ifd_entry_t*)&buffer[offset];
+                        struct ifd_t* makernote = (struct ifd_t*)&buffer[offset];
+                        nef_debug_print("Makernote IFD Entries = %d\n", makernote->entries);
 
-                        for (unsigned i = 0; i < makernote_entries; ++i)
+                        for (unsigned i = 0; i < makernote->entries; ++i)
                         {
-                            switch (entry->tag)
+                            printf("Makernote Tag = 0x%04X\n", makernote->entry[i].tag);
+
+                            switch (makernote->entry[i].tag)
                             {
                             case NIKON_TAG_MAKERNOTE_VERSION:
                             {
                                 // Makernote version is an undefined type and must be
                                 // handled differently than other EXIF string types.
-                                unsigned size = entry->count + 1;
+                                unsigned size = makernote->entry[i].count + 1;
                                 char* makernote_version = malloc(size);
 
                                 if (NULL != makernote_version)
                                 {
-                                    strncpy_s(makernote_version, size, (char*)&entry->value, entry->count);
+                                    strncpy_s(makernote_version, size, (char*)&makernote->entry[i].value, makernote->entry[i].count);
                                     makernote_version[--size] = '\0';
                                     nef_debug_print("Makernote Version = \"%s\"\n", makernote_version);
+                                    free(makernote_version);
                                 }
 
                                 break;
                             }
                             case NIKON_TAG_SHUTTER_COUNT:
-                                printf("Shutter Count = %u\n", entry->value);
+                                printf("Shutter Count = %u\n", makernote->entry[i].value);
                                 break;
                             default:
                                 break;
                             }
-
-                            entry++;
                         }
                     }
                     else

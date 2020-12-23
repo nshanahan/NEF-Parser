@@ -24,9 +24,9 @@
 /******************************************************************
 						Defines
 *******************************************************************/
-#define TIFF_MAGIC		   0x2A
-#define TIFF_LITTLE_ENDIAN 0x4949 //"II"
-#define TIFF_BIG_ENDIAN	   0x4D4D //"MM"
+#define TIFF_MAGIC			0x2A
+#define TIFF_LITTLE_ENDIAN	0x4949 //"II"
+#define TIFF_BIG_ENDIAN		0x4D4D //"MM"
 
 /******************************************************************
 						Structures
@@ -47,6 +47,15 @@ struct ifd_entry_t
 	uint32_t count; // Number of values in the entry
 	uint32_t value; // Value offset
 };
+
+// See Section 2 of TIFF Specification
+#pragma pack(push, 1)
+struct ifd_t
+{
+	uint16_t entries;           // Entry count
+	struct ifd_entry_t entry[]; // Array of IFD entries
+};
+#pragma pack(pop)
 
 /******************************************************************
 						Function Prototypes
