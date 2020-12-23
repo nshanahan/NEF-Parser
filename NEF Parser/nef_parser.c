@@ -30,6 +30,9 @@ const char banner[] = "**********************************************\n"
                       "*           NEF Parser Tool (2020)           *\n"
                       "**********************************************\n\n";
 
+// Additional verbosity for development debugging
+#define NEF_VERBOSE_DEBUG 0
+
 /******************************************************************
                         Macros
 *******************************************************************/
@@ -102,8 +105,7 @@ int main(int argc, char** argv)
                 }
                 else
                 {
-                    nef_debug_print("Valid NEF File.\n");
-                    
+                    nef_debug_print("Valid NEF File.\n");             
                     struct ifd_t* ifd0 = (struct ifd_t*)&buffer[nef_header->ifd0_offset];
                     nef_debug_print("IFD0 Entries = %d\n", ifd0->entries);
                     uint32_t subifd_offset = 0;
@@ -111,8 +113,9 @@ int main(int argc, char** argv)
 
                     for (unsigned i = 0; i < ifd0->entries; ++i)
                     {
+#if NEF_VERBOSE_DEBUG
                         printf("IFD0 Tag = 0x%04X\n", ifd0->entry[i].tag);
-                        
+#endif                   
                         switch (ifd0->entry[i].tag)
                         {
                         case EXIF_TAG_EXIF_OFFSET:
@@ -143,8 +146,10 @@ int main(int argc, char** argv)
               
                     for (unsigned i = 0; i < subifd->entries; ++i)
                     {
+#if NEF_VERBOSE_DEBUG
                         //TODO: Anything useful to do here?
                         printf("Sub-IFD Tag = 0x%04X\n", subifd->entry[i].tag);
+#endif
                     }
 
                     // Next IFD offset is located after the last IFD entry
@@ -167,8 +172,9 @@ int main(int argc, char** argv)
 
                     for (unsigned i = 0; i < exif->entries; ++i)
                     {
+#if NEF_VERBOSE_DEBUG
                         printf("EXIF Tag = 0x%04X\n", exif->entry[i].tag);
-
+#endif
                         if (exif->entry[i].tag == EXIF_TAG_MAKERNOTE)
                         {
                             makernote_offset = exif->entry[i].value;
@@ -188,8 +194,9 @@ int main(int argc, char** argv)
 
                         for (unsigned i = 0; i < makernote->entries; ++i)
                         {
+#if NEF_VERBOSE_DEBUG
                             printf("Makernote Tag = 0x%04X\n", makernote->entry[i].tag);
-
+#endif
                             switch (makernote->entry[i].tag)
                             {
                             case NIKON_TAG_MAKERNOTE_VERSION:
