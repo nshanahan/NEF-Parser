@@ -25,6 +25,8 @@
                         Defines
 *******************************************************************/
 #define MAKERNOTE_MAGIC   "Nikon"
+// Lens data is encrypted is version is 201 or greater
+#define LENS_DATA_0201    201
 
 /******************************************************************
                         Typedefs
@@ -37,7 +39,11 @@ typedef enum
 {
     NIKON_TAG_MAKERNOTE_VERSION = 0x0001,
     NIKON_TAG_ISO               = 0x0002,
+    NIKON_TAG_WHITE_BALANCE     = 0x0004,
+    NIKON_TAG_FOCUS_MODE        = 0x0007,
+    NIKON_TAG_FLASH_SETTING     = 0x0008,
     NIKON_TAG_SERIAL_NUMBER     = 0x001D,
+    NIKON_TAG_ISO_INFO          = 0x0025,
     NIKON_TAG_LENS_TYPE         = 0x0083,
     NIKON_TAG_LENS              = 0x0084,
     NIKON_TAG_LENS_DATA         = 0x0098,
