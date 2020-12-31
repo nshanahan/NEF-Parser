@@ -43,9 +43,6 @@ const char banner[] = "**********************************************\n"
 /******************************************************************
                         Global Variables
 *******************************************************************/
-// Lens Data IFD
-struct ifd_entry_t* lens_data = NULL;
-
 // Needed to decrypt lens data
 uint32_t shutter_count = 0;
 char* serial_number = 0;
@@ -90,14 +87,18 @@ uint8_t xlat[2][256] = {
                         Function Prototypes
 *******************************************************************/
 static void decrypt(uint8_t* data, uint32_t size, char* serial_number, uint32_t shutter_count);
+static char* nikon_lens_id_lookup(uint8_t* key);
 
 /******************************************************************
 *
-* \details Decrypt Nikon lens data.
-*          See https://github.com/exiftool/exiftool/blob/master/lib/Image/ExifTool/Nikon.pm.
+* \brief Decrypt Nikon lens data information.
+*
+* \details
+*   Algorithm credited to Phil Harvey, created of the EXIF Tool.
+*   See https://github.com/exiftool/exiftool/blob/master/lib/Image/ExifTool/Nikon.pm.
 *
 * \param[in] data          : Pointer to encrypted data.
-* \param[in] size          : Size of the data to be decrypted.
+* \param[in] size          : Size of the data (in bytes) to be decrypted.
 * \param[in] serial_number : Camera serial number. Used an encryption key.
 * \param[in] shutter_count : Camera shutter count. Used an encryption key.
 * \param[out] None
@@ -133,6 +134,36 @@ static void decrypt(uint8_t* data, uint32_t size, char* serial_number, uint32_t 
             data[i] ^= cj;
         }
     }
+}
+
+/******************************************************************
+*
+* \details Helper function to look up Nikon lens ID in table.
+*
+* \param[in] key : Lens ID key to be matched.
+* \param[out] None
+*
+* \return
+*   Return lens ID information as a string if a match is found.
+*   Otherwise, return NULL.
+*
+*******************************************************************/
+static char* nikon_lens_id_lookup(uint8_t* key)
+{
+    char* id = NULL;
+    // Calculate entries in look up table
+    unsigned int entries = sizeof(nikon_lens_id_table) / sizeof(nikon_lens_id_table[0]);
+
+    for (unsigned i = 0; i < entries; ++i)
+    {
+        if (memcmp(key, nikon_lens_id_table[i].tag, sizeof(nikon_lens_id_table[i].tag)) == 0)
+        {
+            id = nikon_lens_id_table[i].id;
+            break;
+        }
+    }
+
+    return id;
 }
 
 int main(int argc, char** argv)
@@ -289,6 +320,7 @@ int main(int argc, char** argv)
                         nef_debug_print("Makernote IFD Offset = %d\n", makernote_header->ifd0_offset);
                         struct ifd_t* makernote = (struct ifd_t*)&buffer[offset];
                         nef_debug_print("Makernote IFD Entries = %d\n", makernote->entries);
+                        struct ifd_entry_t* lens_data = NULL;
                         uint8_t lens_type = 0;
 
                         for (unsigned i = 0; i < makernote->entries; ++i)
@@ -394,8 +426,16 @@ int main(int argc, char** argv)
                             uint8_t lens_id[8];
                             memcpy_s(lens_id, sizeof(lens_id), &buffer[offset + 12], 7);
                             lens_id[7] = lens_type;
+                            char* lens_model = nikon_lens_id_lookup(lens_id);
 
-                            // TODO: Implemented lens ID look up table
+                            if (NULL != lens_model)
+                            {
+                                printf("Camera Lens: %s\n", lens_model);
+                            }
+                            else
+                            {
+                                printf("Unknown lens model.\n");
+                            }
                         }
                     }
                     else
