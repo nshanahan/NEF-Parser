@@ -166,6 +166,7 @@ static char* nikon_lens_id_lookup(uint8_t* key)
     return id;
 }
 
+/* Main */
 int main(int argc, char** argv)
 {
     bool error = false;
@@ -282,7 +283,7 @@ int main(int argc, char** argv)
 
                     if (next_ifd_offset == 0)
                     {
-                        nef_debug_print("No other IFD discovered.\n");
+                        nef_debug_print("No IFD1 discovered.\n");
                     }
                     else
                     {
@@ -304,6 +305,23 @@ int main(int argc, char** argv)
                         case EXIF_TAG_MAKERNOTE:
                             makernote_offset = exif->entry[i].value;
                             break;
+                        case EXIF_TAG_EXPOSURE_TIME:
+                        {
+                            offset = exif->entry[i].value;
+                            uint32_t numerator = *(uint32_t*)&buffer[offset] / 10;
+                            uint32_t denominator = *(uint32_t*)&buffer[offset + 4] / 10;
+                            printf("Shutter Speed = %u/%u Second\n", numerator, denominator);
+                            break;
+                        }
+                        case EXIF_TAG_FNUMBER:
+                        {
+                            offset = exif->entry[i].value;
+                            uint32_t numerator = *(uint32_t*)&buffer[offset];
+                            uint32_t denominator = *(uint32_t*)&buffer[offset + 4];
+                            float aperature = (float)numerator / (float)denominator;
+                            printf("Aperature = f/%.1f\n", aperature);
+                            break;
+                        }
                         default:
                             break;
                         }
@@ -353,7 +371,7 @@ int main(int argc, char** argv)
                                 printf("Shutter Count = %u\n", shutter_count);
                                 break;
                             case NIKON_TAG_FOCUS_MODE:
-                            {          
+                            {
                                 // Offset is relative to the beginning of the Makernote TIFF header.
                                 // Unlike the other IFD structures, which use an absolute offset.
                                 offset = makernote_offset + tiff_offset + makernote->entry[i].value;
@@ -388,10 +406,17 @@ int main(int argc, char** argv)
                             case NIKON_TAG_ISO_INFO:
                             {
                                 offset = makernote_offset + tiff_offset + makernote->entry[i].value;
-                                uint32_t raw = buffer[offset];
                                 // Calculate the ISO value
-                                uint32_t iso = 100 * (uint32_t)pow(2, (raw / 12 - 5));
-                                printf("Image ISO = %u\n", iso);
+                                double raw = (double)buffer[offset];
+                                uint32_t iso = 100 * pow(2, raw / 12 - 5);
+                                // Raw ISO value is stored as a single byte.
+                                // Need to round up if value is not divisble by 10.
+                                if ((iso % 10) != 0)
+                                {
+                                    iso += 10 - (iso % 10);
+                                }
+
+                                printf("Image ISO = %u\n", (uint32_t)iso);
                                 break;
                             }
                             case NIKON_TAG_LENS_TYPE:

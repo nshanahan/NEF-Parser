@@ -50,6 +50,7 @@ typedef enum
     EXIF_TAG_Y_RESOLUTION               = 0x011B,
     EXIF_TAG_SUBIFD_OFFSET              = 0x014A,
     EXIF_TAG_EXPOSURE_TIME              = 0x829A,
+    EXIF_TAG_FNUMBER                    = 0x829D,
     EXIF_TAG_EXIF_OFFSET                = 0x8769,
     EXIF_TAG_SHUTTER_SPEED              = 0x9201,
     EXIF_TAG_APERTURE                   = 0x9202,
