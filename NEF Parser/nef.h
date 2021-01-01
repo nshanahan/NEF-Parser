@@ -41,7 +41,8 @@ typedef enum
 {
     NIKON_TAG_MAKERNOTE_VERSION = 0x0001,
     NIKON_TAG_ISO               = 0x0002,
-    NIKON_TAG_WHITE_BALANCE     = 0x0004,
+    NIKON_TAG_QUALITY           = 0x0004,
+    NIKON_TAG_WHITE_BALANCE     = 0x0005,
     NIKON_TAG_FOCUS_MODE        = 0x0007,
     NIKON_TAG_FLASH_SETTING     = 0x0008,
     NIKON_TAG_SERIAL_NUMBER     = 0x001D,
@@ -63,9 +64,7 @@ struct makernote_header_t
     char magic_value[6]; // "Nikon"
     uint16_t version;
     uint16_t reserved;
-    uint16_t byte_order;
-    uint16_t tiff_magic;
-    uint32_t ifd0_offset;
+    struct tiff_header_t tiff_hdr;
 };
 #pragma pack(pop)
 

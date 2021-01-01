@@ -317,9 +317,10 @@ int main(int argc, char** argv)
                     if (strcmp(makernote_header->magic_value, MAKERNOTE_MAGIC) == 0)
                     {
                         offset = makernote_offset + sizeof(struct makernote_header_t);
-                        nef_debug_print("Makernote IFD Offset = %d\n", makernote_header->ifd0_offset);
+                        nef_debug_print("Makernote IFD Offset = %d\n", makernote_header->tiff_hdr.ifd0_offset);
                         struct ifd_t* makernote = (struct ifd_t*)&buffer[offset];
                         nef_debug_print("Makernote IFD Entries = %d\n", makernote->entries);
+                        uint32_t tiff_offset = sizeof(struct makernote_header_t) - sizeof(struct tiff_header_t);
                         struct ifd_entry_t* lens_data = NULL;
                         uint8_t lens_type = 0;
 
@@ -352,18 +353,25 @@ int main(int argc, char** argv)
                                 printf("Shutter Count = %u\n", shutter_count);
                                 break;
                             case NIKON_TAG_FOCUS_MODE:
-                            {
-                                // FIXME: Need to understand why a mysterious 10 byte offset is required.
-                                unsigned offset = makernote_offset + makernote->entry[i].value + 10;
+                            {          
+                                // Offset is relative to the beginning of the Makernote TIFF header.
+                                // Unlike the other IFD structures, which use an absolute offset.
+                                offset = makernote_offset + tiff_offset + makernote->entry[i].value;
                                 char* focus_mode = (char*)&buffer[offset];
                                 printf("Focus Mode = %s\n", focus_mode);
                                 break;
                             }
+                            case NIKON_TAG_QUALITY:
+                            {
+                                offset = makernote_offset + tiff_offset + makernote->entry[i].value;
+                                char* quality = (char*)&buffer[offset];
+                                quality[--makernote->entry[i].count] = '\0';
+                                printf("Quality = %s\n", quality);
+                                break;
+                            }
                             case NIKON_TAG_WHITE_BALANCE:
                             {
-                                // Within the Nikon Makernote, the offset parameter appears to be relative to the
-                                // end of the Makernote header rather than an absolute offset from the beginning of the file.
-                                unsigned offset = makernote_offset + sizeof(struct makernote_header_t) + makernote->entry[i].value;
+                                offset = makernote_offset + tiff_offset + makernote->entry[i].value;
                                 char* white_balance = (char*)&buffer[offset];
                                 white_balance[--makernote->entry[i].count] = '\0';
                                 printf("White Balance = %s\n", white_balance);
@@ -371,8 +379,7 @@ int main(int argc, char** argv)
                             }
                             case NIKON_TAG_SERIAL_NUMBER:
                             {
-                                // FIXME: Need to understand why a mysterious 10 byte offset is required.
-                                unsigned offset = makernote_offset + makernote->entry[i].value + 10;
+                                offset = makernote_offset + tiff_offset + makernote->entry[i].value;
                                 serial_number = (char*)&buffer[offset];
                                 serial_number[--makernote->entry[i].count] = '\0';
                                 printf("Camera Serial Number = %s\n", serial_number);
@@ -380,7 +387,7 @@ int main(int argc, char** argv)
                             }
                             case NIKON_TAG_ISO_INFO:
                             {
-                                unsigned offset = makernote_offset + makernote->entry[i].value + 10;
+                                offset = makernote_offset + tiff_offset + makernote->entry[i].value;
                                 uint32_t raw = buffer[offset];
                                 // Calculate the ISO value
                                 uint32_t iso = 100 * (uint32_t)pow(2, (raw / 12 - 5));
@@ -408,13 +415,13 @@ int main(int argc, char** argv)
                         {
                             char version[5];
                             uint32_t lens_data_version = 0;
-                            unsigned offset = makernote_offset + lens_data->value + 10;
+                            offset = makernote_offset + tiff_offset + lens_data->value;
                             strncpy_s(version, sizeof(version), (char*)&buffer[offset], sizeof(version) - 1);
                             version[4] = '\0'; // Lens data version is not NULL terminated
                             lens_data_version = atoi(version);
                             nef_debug_print("Lens Data Version = %u\n", lens_data_version);
 
-                            // Lens data is encrypted if the version is 0201 or greater.
+                            // Lens data is encrypted if the version is 0201 or greater
                             if (lens_data_version >= LENS_DATA_0201)
                             {
                                 nef_debug_print("Nikon lens data is encrypted.\n");
