@@ -8,6 +8,12 @@
 *
 * \details
 *	Application to parse Nikon Electronic File (NEF) image files.
+* 
+*   Development Resources:
+*     - https://www.itu.int/itudoc/itu-t/com16/tiff-fx/docs/tiff6.pdf
+*     - https://www.exif.org/Exif2-2.PDF
+*     - http://lclevy.free.fr/nef/#:~:text=Overview,full%20RAW%20image%20lossless%20compressed.
+*     - https://exiftool.org/TagNames/EXIF.html
 *
 *******************************************************************/
 
@@ -37,8 +43,8 @@ const char banner[] = "**********************************************\n"
 /******************************************************************
                         Macros
 *******************************************************************/
-#define nef_debug_print(...) printf(__VA_ARGS__)
-//#define nef_debug_print(...)
+//#define nef_debug_print(...) printf(__VA_ARGS__)
+#define nef_debug_print(...)
 
 /******************************************************************
                         Global Variables
@@ -273,7 +279,7 @@ int main(int argc, char** argv)
                         default:
                             break;
                         }
-                }
+                    }
 
                     // Sub-IFD stores the image as a lossy jpeg
                     // Calculate number of sub-IFD entries
@@ -437,17 +443,16 @@ int main(int argc, char** argv)
                             }
                             default:
                                 break;
+                            }
                         }
-                    }
 
                         if (NULL != lens_data)
                         {
                             char version[5];
-                            uint32_t lens_data_version = 0;
                             offset = makernote_offset + tiff_offset + lens_data->value;
                             strncpy_s(version, sizeof(version), (char*)&buffer[offset], sizeof(version) - 1);
                             version[4] = '\0'; // Lens data version is not NULL terminated
-                            lens_data_version = atoi(version);
+                            uint32_t lens_data_version = atoi(version);
                             nef_debug_print("Lens Data Version = %u\n", lens_data_version);
 
                             // Lens data is encrypted if the version is 0201 or greater
@@ -459,6 +464,7 @@ int main(int argc, char** argv)
                             }
 
                             // Construct Lens ID composite tag
+                            // See https://exiftool.org/TagNames/Nikon.html#LensData00
                             uint8_t lens_id[8];
                             memcpy_s(lens_id, sizeof(lens_id), &buffer[offset + 12], sizeof(lens_id) - 1);
                             lens_id[7] = lens_type;
@@ -474,18 +480,18 @@ int main(int argc, char** argv)
                                 printf("Unknown Model.\n");
                             }
                         }
-            }
+                    }
                     else
                     {
                         fprintf(stderr, "Error: Invalid Makernote.\n");
                     }
 
                     free(buffer);
-        }
-    }
+                }
+            }
 
             fclose(nef_file);
-}
+        }
     }
 
     return 0;
