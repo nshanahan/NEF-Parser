@@ -37,8 +37,8 @@ const char banner[] = "**********************************************\n"
 /******************************************************************
                         Macros
 *******************************************************************/
-//#define nef_debug_print(...) printf(__VA_ARGS__)
-#define nef_debug_print(...)
+#define nef_debug_print(...) printf(__VA_ARGS__)
+//#define nef_debug_print(...)
 
 /******************************************************************
                         Global Variables
@@ -205,6 +205,18 @@ int main(int argc, char** argv)
         }
         else
         {
+            // Extract file name from path
+            char* filename = strrchr(argv[1], '\\');
+
+            if (NULL != filename)
+            {
+                printf("File = %s\n", ++filename);
+            }
+            else
+            {
+                printf("File = %s\n", argv[1]);
+            }
+
             fseek(nef_file, 0, SEEK_END);
             size = ftell(nef_file);
             rewind(nef_file);
@@ -231,6 +243,7 @@ int main(int argc, char** argv)
                 else
                 {
                     nef_debug_print("Valid NEF File.\n");
+                    nef_debug_print("Processing IFD0 entries...\n");
                     struct ifd_t* ifd0 = (struct ifd_t*)&buffer[nef_header->ifd0_offset];
                     nef_debug_print("IFD0 Entries = %d\n", ifd0->entries);
                     uint32_t subifd_offset = 0;
@@ -248,9 +261,7 @@ int main(int argc, char** argv)
                             break;
                         case EXIF_TAG_MODEL:
                         {
-                            // Limit variable scope to this case
                             char* model = (char*)&buffer[ifd0->entry[i].value];
-                            model[--ifd0->entry[i].count] = '\0';
                             printf("Camera Model = %s\n", model);
                             break;
                         }
@@ -262,7 +273,7 @@ int main(int argc, char** argv)
                         default:
                             break;
                         }
-                    }
+                }
 
                     // Sub-IFD stores the image as a lossy jpeg
                     // Calculate number of sub-IFD entries
@@ -291,6 +302,7 @@ int main(int argc, char** argv)
                         //TODO: Process IFD
                     }
 
+                    nef_debug_print("Processing IFD0 EXIF data...\n");
                     struct ifd_t* exif = (struct ifd_t*)&buffer[exif_offset];
                     nef_debug_print("EXIF IFD Entries = %d\n", exif->entries);
                     uint32_t makernote_offset = 0;
@@ -316,10 +328,9 @@ int main(int argc, char** argv)
                         case EXIF_TAG_FNUMBER:
                         {
                             offset = exif->entry[i].value;
-                            uint32_t numerator = *(uint32_t*)&buffer[offset];
-                            uint32_t denominator = *(uint32_t*)&buffer[offset + 4];
-                            float aperature = (float)numerator / (float)denominator;
-                            printf("Aperature = f/%.1f\n", aperature);
+                            float numerator = (float)(*(uint32_t*)&buffer[offset]);
+                            float denominator = (float)(*(uint32_t*)&buffer[offset + 4]);
+                            printf("Aperature = f/%.1f\n", numerator / denominator);
                             break;
                         }
                         default:
@@ -327,9 +338,8 @@ int main(int argc, char** argv)
                         }
                     }
 
+                    nef_debug_print("Processing Nikon Makernote...\n");
                     struct makernote_header_t* makernote_header = (struct makernote_header_t*)&buffer[makernote_offset];
-                    // Magic value string is zero terminated. Replace with null terminator.
-                    makernote_header->magic_value[5] = '\0';
                     nef_debug_print("Makernote Magic Value = %s\n", makernote_header->magic_value);
 
                     if (strcmp(makernote_header->magic_value, MAKERNOTE_MAGIC) == 0)
@@ -383,7 +393,6 @@ int main(int argc, char** argv)
                             {
                                 offset = makernote_offset + tiff_offset + makernote->entry[i].value;
                                 char* quality = (char*)&buffer[offset];
-                                quality[--makernote->entry[i].count] = '\0';
                                 printf("Quality = %s\n", quality);
                                 break;
                             }
@@ -391,7 +400,6 @@ int main(int argc, char** argv)
                             {
                                 offset = makernote_offset + tiff_offset + makernote->entry[i].value;
                                 char* white_balance = (char*)&buffer[offset];
-                                white_balance[--makernote->entry[i].count] = '\0';
                                 printf("White Balance = %s\n", white_balance);
                                 break;
                             }
@@ -399,7 +407,6 @@ int main(int argc, char** argv)
                             {
                                 offset = makernote_offset + tiff_offset + makernote->entry[i].value;
                                 serial_number = (char*)&buffer[offset];
-                                serial_number[--makernote->entry[i].count] = '\0';
                                 printf("Camera Serial Number = %s\n", serial_number);
                                 break;
                             }
@@ -409,14 +416,11 @@ int main(int argc, char** argv)
                                 // Calculate the ISO value
                                 double raw = (double)buffer[offset];
                                 uint32_t iso = 100 * pow(2, raw / 12 - 5);
+                                unsigned remainder = iso % 10;
                                 // Raw ISO value is stored as a single byte.
                                 // Need to round up if value is not divisble by 10.
-                                if ((iso % 10) != 0)
-                                {
-                                    iso += 10 - (iso % 10);
-                                }
-
-                                printf("Image ISO = %u\n", (uint32_t)iso);
+                                if (remainder != 0) iso += 10 - remainder;
+                                printf("Image ISO = %u\n", iso);
                                 break;
                             }
                             case NIKON_TAG_LENS_TYPE:
@@ -427,14 +431,14 @@ int main(int argc, char** argv)
                             }
                             case NIKON_TAG_LENS_DATA:
                             {
-                                // Need shutter count and serial number to process lens data
+                                // Need shutter count and serial number before processing lens data
                                 lens_data = &makernote->entry[i];
                                 break;
                             }
                             default:
                                 break;
-                            }
                         }
+                    }
 
                         if (NULL != lens_data)
                         {
@@ -449,38 +453,39 @@ int main(int argc, char** argv)
                             // Lens data is encrypted if the version is 0201 or greater
                             if (lens_data_version >= LENS_DATA_0201)
                             {
-                                nef_debug_print("Nikon lens data is encrypted.\n");
+                                nef_debug_print("Nikon lens data is encrypted. Decrypting data...\n");
                                 // Encrypted data begins after version string
                                 decrypt(&buffer[offset + 4], lens_data->count - 4, serial_number, shutter_count);
                             }
 
                             // Construct Lens ID composite tag
                             uint8_t lens_id[8];
-                            memcpy_s(lens_id, sizeof(lens_id), &buffer[offset + 12], 7);
+                            memcpy_s(lens_id, sizeof(lens_id), &buffer[offset + 12], sizeof(lens_id) - 1);
                             lens_id[7] = lens_type;
                             char* lens_model = nikon_lens_id_lookup(lens_id);
+                            printf("Camera Lens = ");
 
                             if (NULL != lens_model)
                             {
-                                printf("Camera Lens: %s\n", lens_model);
+                                printf("%s\n", lens_model);
                             }
                             else
                             {
-                                printf("Unknown lens model.\n");
+                                printf("Unknown Model.\n");
                             }
                         }
-                    }
+            }
                     else
                     {
                         fprintf(stderr, "Error: Invalid Makernote.\n");
                     }
 
                     free(buffer);
-                }
-            }
+        }
+    }
 
             fclose(nef_file);
-        }
+}
     }
 
     return 0;
