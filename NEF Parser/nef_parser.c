@@ -10,10 +10,10 @@
 *	Application to parse Nikon Electronic File (NEF) image files.
 * 
 *   Development Resources:
-*     - https://www.itu.int/itudoc/itu-t/com16/tiff-fx/docs/tiff6.pdf
-*     - https://www.exif.org/Exif2-2.PDF
-*     - http://lclevy.free.fr/nef/#:~:text=Overview,full%20RAW%20image%20lossless%20compressed.
-*     - https://exiftool.org/TagNames/EXIF.html
+*       - https://www.itu.int/itudoc/itu-t/com16/tiff-fx/docs/tiff6.pdf
+*       - https://www.exif.org/Exif2-2.PDF
+*       - http://lclevy.free.fr/nef/#:~:text=Overview,full%20RAW%20image%20lossless%20compressed.
+*       - https://exiftool.org/TagNames/EXIF.html
 *
 *******************************************************************/
 
@@ -38,13 +38,13 @@ const char banner[] = "**********************************************\n"
                       "**********************************************\n\n";
 
 // Additional verbosity for development debugging
-#define NEF_VERBOSE_DEBUG 0
+#define NEF_VERBOSE_DEBUG 1
 
 /******************************************************************
                         Macros
 *******************************************************************/
-//#define nef_debug_print(...) printf(__VA_ARGS__)
-#define nef_debug_print(...)
+#define nef_debug_print(...) printf(__VA_ARGS__)
+//#define nef_debug_print(...)
 
 /******************************************************************
                         Global Variables
@@ -276,6 +276,12 @@ int main(int argc, char** argv)
                             subifd_offset = (ifd0->entry[i].count > 2) ? *((uint32_t*)&buffer[ifd0->entry[i].value]) : ifd0->entry[i].value;
                             nef_debug_print("Sub-IFD Offset = 0x%08X\n", subifd_offset);
                             break;
+                        case EXIF_TAG_DATE_TIME_ORIGINAL:
+                        {
+                            char* timestamp = (char*)&buffer[ifd0->entry[i].value];
+                            printf("Time Stamp = %s\n", timestamp);
+                            break;
+                        }
                         default:
                             break;
                         }
@@ -339,6 +345,35 @@ int main(int argc, char** argv)
                             printf("Aperature = f/%.1f\n", numerator / denominator);
                             break;
                         }
+                        case EXIF_METERING_MODE:
+                            printf("Meterming Mode = ");
+                            switch (exif->entry[i].value)
+                            {
+                            case 0:
+                                printf("Unknown\n");
+                                break;
+                            case 1:
+                                printf("Average\n");
+                                break;
+                            case 2:
+                                printf("Center-Weighted\n");
+                                break;
+                            case 3:
+                                printf("Spot\n");
+                                break;
+                            case 4:
+                                printf("Multi-Spot\n");
+                                break;
+                            case 5:
+                                printf("Multi-Segment\n");
+                                break;
+                            case 6:
+                                printf("Partial\n");
+                                break;
+                            default:
+                                printf("Other\n");
+                                break;
+                            }
                         default:
                             break;
                         }
@@ -466,7 +501,7 @@ int main(int argc, char** argv)
                             // Construct Lens ID composite tag
                             // See https://exiftool.org/TagNames/Nikon.html#LensData00
                             uint8_t lens_id[8];
-                            memcpy_s(lens_id, sizeof(lens_id), &buffer[offset + 12], sizeof(lens_id) - 1);
+                            memcpy_s(lens_id, sizeof(lens_id), &buffer[offset + LENS_ID_OFFSET], sizeof(lens_id) - 1);
                             lens_id[7] = lens_type;
                             char* lens_model = nikon_lens_id_lookup(lens_id);
                             printf("Camera Lens = ");

@@ -27,6 +27,7 @@
 #define MAKERNOTE_MAGIC     "Nikon"
 // Lens data is encrypted is version is 201 or greater
 #define LENS_DATA_0201      201
+#define LENS_ID_OFFSET      12
 #define MAX_LENS_ID_LENGTH  96
 #define MAX_LENS_ID_ENTRIES 256
 
