@@ -38,13 +38,16 @@ const char banner[] = "**********************************************\n"
                       "**********************************************\n\n";
 
 // Additional verbosity for development debugging
-#define NEF_VERBOSE_DEBUG 1
+#define NEF_VERBOSE_DEBUG 0
 
 /******************************************************************
                         Macros
 *******************************************************************/
-#define nef_debug_print(...) printf(__VA_ARGS__)
-//#define nef_debug_print(...)
+//#define nef_debug_print(...) printf(__VA_ARGS__)
+#define nef_debug_print(...)
+
+// Convert bytes to double words
+#define BYTES_TO_DWORDS(x) ((x) >> 2)
 
 /******************************************************************
                         Global Variables
@@ -170,6 +173,45 @@ static char* nikon_lens_id_lookup(uint8_t* key)
     }
 
     return id;
+}
+
+/******************************************************************
+*
+* \details Helper function get value of EXIF rational entries.
+*
+* \param[in] entry  : EXIF entry to be processed.
+* \param[in] buffer : Pointer to image file buffer.
+* \param[out] None
+*
+* \return
+*   Return rational value of entry.
+*
+*******************************************************************/
+static float get_rational(struct ifd_entry_t* entry, void* buffer)
+{
+    float rational = 0;
+
+    if ((NULL != entry) && (NULL != buffer))
+    {
+        if (TIFF_TYPE_RATIONAL == entry->type)
+        {
+            uint32_t* data = (uint32_t*)buffer;
+            unsigned offset = BYTES_TO_DWORDS(entry->value);
+            float numerator = (float)data[offset];
+            float denominator = (float)data[++offset];
+            rational = numerator / denominator;
+        }
+        else
+        {
+            fprintf(stderr, "Error: Entry type is not RATIONAL.\n");
+        }
+    }
+    else
+    {
+        fprintf(stderr, "Error: One or more NULL input arguments.\n");
+    }
+
+    return rational;
 }
 
 /* Main */
@@ -331,18 +373,15 @@ int main(int argc, char** argv)
                             break;
                         case EXIF_TAG_EXPOSURE_TIME:
                         {
-                            offset = exif->entry[i].value;
-                            uint32_t numerator = *(uint32_t*)&buffer[offset] / 10;
-                            uint32_t denominator = *(uint32_t*)&buffer[offset + 4] / 10;
-                            printf("Shutter Speed = %u/%u Second\n", numerator, denominator);
+                            float shutter = get_rational(&exif->entry[i], buffer);
+                            // FIXME: Update to account for slow shutter speeds (>= 1s) 
+                            printf("Shutter Speed = 1/%.0f second\n", 1 / shutter);
                             break;
                         }
                         case EXIF_TAG_FNUMBER:
                         {
-                            offset = exif->entry[i].value;
-                            float numerator = (float)(*(uint32_t*)&buffer[offset]);
-                            float denominator = (float)(*(uint32_t*)&buffer[offset + 4]);
-                            printf("Aperature = f/%.1f\n", numerator / denominator);
+                            float aperature = get_rational(&exif->entry[i], buffer);
+                            printf("Aperature = f/%.1f\n", aperature);
                             break;
                         }
                         case EXIF_TAG_METERING_MODE:
@@ -380,10 +419,8 @@ int main(int argc, char** argv)
                         }
                         case EXIF_TAG_FOCAL_LENGTH:
                         {
-                            offset = exif->entry[i].value;
-                            float numerator = (float)(*(uint32_t*)&buffer[offset]);
-                            float denominator = (float)(*(uint32_t*)&buffer[offset + 4]);
-                            printf("Focal Length = %.2f mm\n", numerator / denominator);
+                            float focal_length = get_rational(&exif->entry[i], buffer);
+                            printf("Focal Length = %.2f mm\n", focal_length);
                         }
                         default:
                             break;

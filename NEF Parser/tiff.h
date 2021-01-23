@@ -58,6 +58,26 @@ struct ifd_t
 #pragma pack(pop)
 
 /******************************************************************
+						Typedefs
+*******************************************************************/
+// See https://www.itu.int/itudoc/itu-t/com16/tiff-fx/docs/tiff6.pdf
+typedef enum
+{
+	TIFF_TYPE_BYTE		= 1,
+	TIFF_TYPE_ASCII		= 2,
+	TIFF_TYPE_SHORT		= 3,
+	TIFF_TYPE_LONG		= 4,
+	TIFF_TYPE_RATIONAL	= 5,
+	TIFF_TYPE_SBYTE		= 6,
+	TIFF_TYPE_UNDEFINED	= 7,
+	TIFF_TYPE_SSHORT	= 8,
+	TIFF_TYPE_SLONG		= 9,
+	TIFF_TYPE_SRATIONAL	= 10,
+	TIFF_TYPE_FLOAT		= 11,
+	TIFF_TYPE_DOUBLE	= 12
+} tiff_type_t;
+
+/******************************************************************
 						Function Prototypes
 *******************************************************************/
 
