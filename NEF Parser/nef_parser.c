@@ -345,8 +345,9 @@ int main(int argc, char** argv)
                             printf("Aperature = f/%.1f\n", numerator / denominator);
                             break;
                         }
-                        case EXIF_METERING_MODE:
-                            printf("Meterming Mode = ");
+                        case EXIF_TAG_METERING_MODE:
+                        {
+                            printf("Metering Mode = ");
                             switch (exif->entry[i].value)
                             {
                             case 0:
@@ -374,6 +375,16 @@ int main(int argc, char** argv)
                                 printf("Other\n");
                                 break;
                             }
+
+                            break;
+                        }
+                        case EXIF_TAG_FOCAL_LENGTH:
+                        {
+                            offset = exif->entry[i].value;
+                            float numerator = (float)(*(uint32_t*)&buffer[offset]);
+                            float denominator = (float)(*(uint32_t*)&buffer[offset + 4]);
+                            printf("Focal Length = %.2f mm\n", numerator / denominator);
+                        }
                         default:
                             break;
                         }

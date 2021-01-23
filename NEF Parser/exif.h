@@ -55,7 +55,8 @@ typedef enum
     EXIF_TAG_DATE_TIME_ORIGINAL         = 0x9003,
     EXIF_TAG_SHUTTER_SPEED              = 0x9201,
     EXIF_TAG_APERTURE                   = 0x9202,
-    EXIF_METERING_MODE                  = 0x9207,
+    EXIF_TAG_METERING_MODE              = 0x9207,
+    EXIF_TAG_FOCAL_LENGTH               = 0x920A,
     EXIF_TAG_MAKERNOTE                  = 0x927C
 } exif_tag_t;
 
