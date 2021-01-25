@@ -52,9 +52,8 @@ const char banner[] = "**********************************************\n"
 /******************************************************************
                         Global Variables
 *******************************************************************/
-// Needed to decrypt lens data
-uint32_t shutter_count = 0;
-char* serial_number = 0;
+static uint32_t makernote_offset = 0;
+static uint32_t tiff_offset = 0;
 
 // Translation table used to decrypt lens data fields
 uint8_t xlat[2][256] = {
@@ -97,13 +96,15 @@ uint8_t xlat[2][256] = {
 *******************************************************************/
 static void decrypt(uint8_t* data, uint32_t size, char* serial_number, uint32_t shutter_count);
 static char* nikon_lens_id_lookup(uint8_t* key);
+static float get_tiff_rational(struct ifd_entry_t* entry, void* buffer);
+static char* get_makernote_string(struct ifd_entry_t* entry, void* buffer);
 
 /******************************************************************
 *
 * \brief Decrypt Nikon lens data information.
 *
 * \details
-*   Algorithm credited to Phil Harvey, created of the EXIF Tool.
+*   Algorithm credited to Phil Harvey, creator of the EXIF Tool.
 *   See https://github.com/exiftool/exiftool/blob/master/lib/Image/ExifTool/Nikon.pm.
 *
 * \param[in] data          : Pointer to encrypted data.
@@ -187,7 +188,7 @@ static char* nikon_lens_id_lookup(uint8_t* key)
 *   Return rational value of entry.
 *
 *******************************************************************/
-static float get_rational(struct ifd_entry_t* entry, void* buffer)
+static float get_tiff_rational(struct ifd_entry_t* entry, void* buffer)
 {
     float rational = 0;
 
@@ -212,6 +213,53 @@ static float get_rational(struct ifd_entry_t* entry, void* buffer)
     }
 
     return rational;
+}
+
+/******************************************************************
+*
+* \details Helper function get value of Makernote string entries.
+*
+* \param[in] entry  : Makernote entry to be processed.
+* \param[in] buffer : Pointer to image file buffer.
+* \param[out] None
+*
+* \return
+*   Return pointer to entry ASCII string.
+*
+*******************************************************************/
+static char* get_makernote_string(struct ifd_entry_t* entry, void* buffer)
+{
+    char* str = NULL;
+    
+    if ((NULL != entry) && (NULL != buffer))
+    {
+        if (TIFF_TYPE_ASCII == entry->type)
+        {
+            if (entry->count > sizeof(uint32_t))
+            {
+                nef_debug_print("Count = %u\n", entry->count);
+                uint8_t* data = (uint8_t*)buffer;
+                // Offset is relative to the beginning of the Makernote TIFF header.
+                // Unlike the other IFD structures, which use an absolute offset.
+                uint32_t offset = makernote_offset + tiff_offset + entry->value;
+                str = (char*)&data[offset];
+            }
+            else
+            {
+                str = (char*)&entry->value;
+            }
+        }
+        else
+        {
+            fprintf(stderr, "Error: Entry type is not ASCII.\n");
+        }
+    }
+    else
+    {
+        fprintf(stderr, "Error: One or more NULL input arguments.\n");
+    }
+
+    return str;
 }
 
 /* Main */
@@ -359,7 +407,6 @@ int main(int argc, char** argv)
                     nef_debug_print("Processing IFD0 EXIF data...\n");
                     struct ifd_t* exif = (struct ifd_t*)&buffer[exif_offset];
                     nef_debug_print("EXIF IFD Entries = %d\n", exif->entries);
-                    uint32_t makernote_offset = 0;
 
                     for (unsigned i = 0; i < exif->entries; ++i)
                     {
@@ -373,14 +420,14 @@ int main(int argc, char** argv)
                             break;
                         case EXIF_TAG_EXPOSURE_TIME:
                         {
-                            float shutter = get_rational(&exif->entry[i], buffer);
+                            float shutter = get_tiff_rational(&exif->entry[i], buffer);
                             // FIXME: Update to account for slow shutter speeds (>= 1s) 
                             printf("Shutter Speed = 1/%.0f second\n", 1 / shutter);
                             break;
                         }
                         case EXIF_TAG_FNUMBER:
                         {
-                            float aperature = get_rational(&exif->entry[i], buffer);
+                            float aperature = get_tiff_rational(&exif->entry[i], buffer);
                             printf("Aperature = f/%.1f\n", aperature);
                             break;
                         }
@@ -419,7 +466,7 @@ int main(int argc, char** argv)
                         }
                         case EXIF_TAG_FOCAL_LENGTH:
                         {
-                            float focal_length = get_rational(&exif->entry[i], buffer);
+                            float focal_length = get_tiff_rational(&exif->entry[i], buffer);
                             printf("Focal Length = %.2f mm\n", focal_length);
                         }
                         default:
@@ -433,13 +480,17 @@ int main(int argc, char** argv)
 
                     if (strcmp(makernote_header->magic_value, MAKERNOTE_MAGIC) == 0)
                     {
+                        // Limit scope to Makernote processing
+                        struct ifd_entry_t* lens_data = NULL;
+                        uint8_t lens_type = 0;
+                        uint32_t shutter_count = 0;
+                        char* serial_number = 0;
+
                         offset = makernote_offset + sizeof(struct makernote_header_t);
                         nef_debug_print("Makernote IFD Offset = %d\n", makernote_header->tiff_hdr.ifd0_offset);
                         struct ifd_t* makernote = (struct ifd_t*)&buffer[offset];
                         nef_debug_print("Makernote IFD Entries = %d\n", makernote->entries);
-                        uint32_t tiff_offset = sizeof(struct makernote_header_t) - sizeof(struct tiff_header_t);
-                        struct ifd_entry_t* lens_data = NULL;
-                        uint8_t lens_type = 0;
+                        tiff_offset = sizeof(struct makernote_header_t) - sizeof(struct tiff_header_t);
 
                         for (unsigned i = 0; i < makernote->entries; ++i)
                         {
@@ -471,31 +522,25 @@ int main(int argc, char** argv)
                                 break;
                             case NIKON_TAG_FOCUS_MODE:
                             {
-                                // Offset is relative to the beginning of the Makernote TIFF header.
-                                // Unlike the other IFD structures, which use an absolute offset.
-                                offset = makernote_offset + tiff_offset + makernote->entry[i].value;
-                                char* focus_mode = (char*)&buffer[offset];
+                                char* focus_mode = get_makernote_string(&makernote->entry[i], buffer);
                                 printf("Focus Mode = %s\n", focus_mode);
                                 break;
                             }
                             case NIKON_TAG_QUALITY:
                             {
-                                offset = makernote_offset + tiff_offset + makernote->entry[i].value;
-                                char* quality = (char*)&buffer[offset];
+                                char* quality = get_makernote_string(&makernote->entry[i], buffer);
                                 printf("Quality = %s\n", quality);
                                 break;
                             }
                             case NIKON_TAG_WHITE_BALANCE:
                             {
-                                offset = makernote_offset + tiff_offset + makernote->entry[i].value;
-                                char* white_balance = (char*)&buffer[offset];
+                                char* white_balance = get_makernote_string(&makernote->entry[i], buffer);
                                 printf("White Balance = %s\n", white_balance);
                                 break;
                             }
                             case NIKON_TAG_SERIAL_NUMBER:
                             {
-                                offset = makernote_offset + tiff_offset + makernote->entry[i].value;
-                                serial_number = (char*)&buffer[offset];
+                                serial_number = get_makernote_string(&makernote->entry[i], buffer);
                                 printf("Camera Serial Number = %s\n", serial_number);
                                 break;
                             }
