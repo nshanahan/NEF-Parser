@@ -25,6 +25,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
+#include <ctype.h>
 #include <math.h>
 #include "nef.h"
 #include "tiff.h"
@@ -34,11 +35,14 @@
                         Defines
 *******************************************************************/
 const char banner[] = "**********************************************\n"
-                      "*           NEF Parser Tool (2020)           *\n"
+                      "*           NEF Parser Tool (2021)           *\n"
                       "**********************************************\n\n";
 
 // Additional verbosity for development debugging
-#define NEF_VERBOSE_DEBUG 0
+#define NEF_VERBOSE_DEBUG  0
+
+// Justification width for output formatting
+#define LEFT_JUSTIFY_WIDTH 14
 
 /******************************************************************
                         Macros
@@ -52,6 +56,8 @@ const char banner[] = "**********************************************\n"
 /******************************************************************
                         Global Variables
 *******************************************************************/
+static image_data_t* image_data = NULL;
+static camera_data_t* camera_data = NULL;
 static uint32_t makernote_offset = 0;
 static uint32_t tiff_offset = 0;
 
@@ -98,6 +104,8 @@ static void decrypt(uint8_t* data, uint32_t size, char* serial_number, uint32_t 
 static char* nikon_lens_id_lookup(uint8_t* key);
 static float get_tiff_rational(struct ifd_entry_t* entry, void* buffer);
 static char* get_makernote_string(struct ifd_entry_t* entry, void* buffer);
+static char* rstrip(char* str);
+static void display_data(void);
 
 /******************************************************************
 *
@@ -262,6 +270,61 @@ static char* get_makernote_string(struct ifd_entry_t* entry, void* buffer)
     return str;
 }
 
+/******************************************************************
+*
+* \details Helper function to string trailing whitespace in a string.
+*
+* \param[in] str  : String to be processed.
+* \param[out] None
+*
+* \return
+*   Return pointer to string.
+*
+*******************************************************************/
+static char* rstrip(char* str)
+{
+    int index;
+
+    if (NULL != str)
+    {
+        index = strlen(str) - 1;
+        while (index > 0 && isspace(str[index])) index--;
+        str[++index] = '\0';
+    }
+
+    return str;
+}
+
+/******************************************************************
+*
+* \details Helper function to display the formatted image and 
+*          camera information.
+*
+* \param[in] None
+* \param[out] None
+*
+* \return
+*   None
+*
+*******************************************************************/
+static void display_data(void)
+{
+    printf("%-*s| %s\n", LEFT_JUSTIFY_WIDTH, "Camera Model", camera_data->model);
+    printf("%-*s| %s\n", LEFT_JUSTIFY_WIDTH, "Serial Number", camera_data->serial_number);
+    printf("%-*s| %s\n", LEFT_JUSTIFY_WIDTH, "Camera Lens", camera_data->lens);
+    printf("%-*s| %s\n", LEFT_JUSTIFY_WIDTH, "Time Stamp", image_data->timestamp);
+    // FIXME: Update to account for slow shutter speeds (>= 1s)
+    printf("%-*s| 1/%.0f second\n", LEFT_JUSTIFY_WIDTH, "Shutter Speed", 1 / image_data->shutter_speed);
+    printf("%-*s| f/%.1f\n", LEFT_JUSTIFY_WIDTH, "Aperature", image_data->aperature);
+    printf("%-*s| %u\n", LEFT_JUSTIFY_WIDTH, "ISO", image_data->iso);
+    printf("%-*s| %.2f mm\n", LEFT_JUSTIFY_WIDTH, "Focal Length", image_data->focal_length);
+    printf("%-*s| %s\n", LEFT_JUSTIFY_WIDTH, "White Balance", rstrip(image_data->white_balance));
+    printf("%-*s| %s\n", LEFT_JUSTIFY_WIDTH, "Quality", rstrip(image_data->quality));
+    printf("%-*s| %s\n", LEFT_JUSTIFY_WIDTH, "Focus Mode", rstrip(image_data->focus_mode));
+    printf("%-*s| %s\n", LEFT_JUSTIFY_WIDTH, "Metering Mode", image_data->metering_mode);
+    printf("%-*s| %u\n", LEFT_JUSTIFY_WIDTH, "Shutter Count", image_data->shutter_count);
+}
+
 /* Main */
 int main(int argc, char** argv)
 {
@@ -279,6 +342,8 @@ int main(int argc, char** argv)
 
     if (!error)
     {
+        image_data = malloc(sizeof(image_data_t));
+        camera_data = malloc(sizeof(camera_data_t));
         printf("%s", banner);
         char* extension;
         extension = strrchr(argv[1], '.');
@@ -303,14 +368,15 @@ int main(int argc, char** argv)
         {
             // Extract file name from path
             char* filename = strrchr(argv[1], '\\');
+            printf("%-*s| ", LEFT_JUSTIFY_WIDTH, "File");
 
             if (NULL != filename)
             {
-                printf("File = %s\n", ++filename);
+                printf("%s\n", ++filename);
             }
             else
             {
-                printf("File = %s\n", argv[1]);
+                printf("%s\n", argv[1]);
             }
 
             fseek(nef_file, 0, SEEK_END);
@@ -353,23 +419,25 @@ int main(int argc, char** argv)
                         switch (ifd0->entry[i].tag)
                         {
                         case EXIF_TAG_EXIF_OFFSET:
+                        {
                             exif_offset = ifd0->entry[i].value;
                             break;
+                        }
                         case EXIF_TAG_MODEL:
                         {
-                            char* model = (char*)&buffer[ifd0->entry[i].value];
-                            printf("Camera Model = %s\n", model);
+                            camera_data->model = (char*)&buffer[ifd0->entry[i].value];
                             break;
                         }
                         case EXIF_TAG_SUBIFD_OFFSET:
+                        {
                             // Entry word count determines if value is an offset or the actual value
                             subifd_offset = (ifd0->entry[i].count > 2) ? *((uint32_t*)&buffer[ifd0->entry[i].value]) : ifd0->entry[i].value;
                             nef_debug_print("Sub-IFD Offset = 0x%08X\n", subifd_offset);
                             break;
+                        }
                         case EXIF_TAG_DATE_TIME_ORIGINAL:
                         {
-                            char* timestamp = (char*)&buffer[ifd0->entry[i].value];
-                            printf("Time Stamp = %s\n", timestamp);
+                            image_data->timestamp = (char*)&buffer[ifd0->entry[i].value];
                             break;
                         }
                         default:
@@ -416,49 +484,47 @@ int main(int argc, char** argv)
                         switch (exif->entry[i].tag)
                         {
                         case EXIF_TAG_MAKERNOTE:
+                        {
                             makernote_offset = exif->entry[i].value;
                             break;
+                        }
                         case EXIF_TAG_EXPOSURE_TIME:
                         {
-                            float shutter = get_tiff_rational(&exif->entry[i], buffer);
-                            // FIXME: Update to account for slow shutter speeds (>= 1s) 
-                            printf("Shutter Speed = 1/%.0f second\n", 1 / shutter);
+                            image_data->shutter_speed = get_tiff_rational(&exif->entry[i], buffer); 
                             break;
                         }
                         case EXIF_TAG_FNUMBER:
                         {
-                            float aperature = get_tiff_rational(&exif->entry[i], buffer);
-                            printf("Aperature = f/%.1f\n", aperature);
+                            image_data->aperature = get_tiff_rational(&exif->entry[i], buffer);
                             break;
                         }
                         case EXIF_TAG_METERING_MODE:
                         {
-                            printf("Metering Mode = ");
                             switch (exif->entry[i].value)
                             {
                             case 0:
-                                printf("Unknown\n");
+                                image_data->metering_mode = "Unknown";
                                 break;
                             case 1:
-                                printf("Average\n");
+                                image_data->metering_mode = "Average";
                                 break;
                             case 2:
-                                printf("Center-Weighted\n");
+                                image_data->metering_mode = "Center-Weighted";
                                 break;
                             case 3:
-                                printf("Spot\n");
+                                image_data->metering_mode = "Spot";
                                 break;
                             case 4:
-                                printf("Multi-Spot\n");
+                                image_data->metering_mode = "Multi-Spot";
                                 break;
                             case 5:
-                                printf("Multi-Segment\n");
+                                image_data->metering_mode = "Multi-Segment";
                                 break;
                             case 6:
-                                printf("Partial\n");
+                                image_data->metering_mode = "Partial";
                                 break;
                             default:
-                                printf("Other\n");
+                                image_data->metering_mode = "Other";
                                 break;
                             }
 
@@ -466,8 +532,8 @@ int main(int argc, char** argv)
                         }
                         case EXIF_TAG_FOCAL_LENGTH:
                         {
-                            float focal_length = get_tiff_rational(&exif->entry[i], buffer);
-                            printf("Focal Length = %.2f mm\n", focal_length);
+                            image_data->focal_length = get_tiff_rational(&exif->entry[i], buffer);
+                            break;
                         }
                         default:
                             break;
@@ -483,8 +549,6 @@ int main(int argc, char** argv)
                         // Limit scope to Makernote processing
                         struct ifd_entry_t* lens_data = NULL;
                         uint8_t lens_type = 0;
-                        uint32_t shutter_count = 0;
-                        char* serial_number = 0;
 
                         offset = makernote_offset + sizeof(struct makernote_header_t);
                         nef_debug_print("Makernote IFD Offset = %d\n", makernote_header->tiff_hdr.ifd0_offset);
@@ -517,31 +581,28 @@ int main(int argc, char** argv)
                                 break;
                             }
                             case NIKON_TAG_SHUTTER_COUNT:
-                                shutter_count = makernote->entry[i].value;
-                                printf("Shutter Count = %u\n", shutter_count);
+                            {
+                                image_data->shutter_count = makernote->entry[i].value;
                                 break;
+                            }
                             case NIKON_TAG_FOCUS_MODE:
                             {
-                                char* focus_mode = get_makernote_string(&makernote->entry[i], buffer);
-                                printf("Focus Mode = %s\n", focus_mode);
+                                image_data->focus_mode = get_makernote_string(&makernote->entry[i], buffer);
                                 break;
                             }
                             case NIKON_TAG_QUALITY:
                             {
-                                char* quality = get_makernote_string(&makernote->entry[i], buffer);
-                                printf("Quality = %s\n", quality);
+                                image_data->quality = get_makernote_string(&makernote->entry[i], buffer);
                                 break;
                             }
                             case NIKON_TAG_WHITE_BALANCE:
                             {
-                                char* white_balance = get_makernote_string(&makernote->entry[i], buffer);
-                                printf("White Balance = %s\n", white_balance);
+                                image_data->white_balance = get_makernote_string(&makernote->entry[i], buffer);
                                 break;
                             }
                             case NIKON_TAG_SERIAL_NUMBER:
                             {
-                                serial_number = get_makernote_string(&makernote->entry[i], buffer);
-                                printf("Camera Serial Number = %s\n", serial_number);
+                                camera_data->serial_number = get_makernote_string(&makernote->entry[i], buffer);
                                 break;
                             }
                             case NIKON_TAG_ISO_INFO:
@@ -549,12 +610,15 @@ int main(int argc, char** argv)
                                 offset = makernote_offset + tiff_offset + makernote->entry[i].value;
                                 // Calculate the ISO value
                                 double raw = (double)buffer[offset];
-                                uint32_t iso = 100 * pow(2, raw / 12 - 5);
-                                unsigned remainder = iso % 10;
+                                image_data->iso = 100 * pow(2, raw / 12 - 5);
+                                unsigned remainder = image_data->iso % 10;
                                 // Raw ISO value is stored as a single byte.
                                 // Need to round up if value is not divisble by 10.
-                                if (remainder != 0) iso += 10 - remainder;
-                                printf("Image ISO = %u\n", iso);
+                                if (remainder != 0)
+                                {
+                                    image_data->iso += 10 - remainder;
+                                }
+
                                 break;
                             }
                             case NIKON_TAG_LENS_TYPE:
@@ -588,7 +652,7 @@ int main(int argc, char** argv)
                             {
                                 nef_debug_print("Nikon lens data is encrypted. Decrypting data...\n");
                                 // Encrypted data begins after version string
-                                decrypt(&buffer[offset + 4], lens_data->count - 4, serial_number, shutter_count);
+                                decrypt(&buffer[offset + 4], lens_data->count - 4, camera_data->serial_number, image_data->shutter_count);
                             }
 
                             // Construct Lens ID composite tag
@@ -596,18 +660,15 @@ int main(int argc, char** argv)
                             uint8_t lens_id[8];
                             memcpy_s(lens_id, sizeof(lens_id), &buffer[offset + LENS_ID_OFFSET], sizeof(lens_id) - 1);
                             lens_id[7] = lens_type;
-                            char* lens_model = nikon_lens_id_lookup(lens_id);
-                            printf("Camera Lens = ");
+                            camera_data->lens = nikon_lens_id_lookup(lens_id);
 
-                            if (NULL != lens_model)
+                            if (NULL == camera_data->lens)
                             {
-                                printf("%s\n", lens_model);
-                            }
-                            else
-                            {
-                                printf("Unknown Model.\n");
+                                camera_data->lens = "Unknown";
                             }
                         }
+
+                        display_data();
                     }
                     else
                     {

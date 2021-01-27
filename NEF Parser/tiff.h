@@ -77,6 +77,29 @@ typedef enum
 	TIFF_TYPE_DOUBLE	= 12
 } tiff_type_t;
 
+// Information describing the image
+typedef struct
+{
+	char* timestamp;
+	char* metering_mode;
+	char* focus_mode;
+	char* quality;
+	char* white_balance;
+	float shutter_speed;
+	float aperature;
+	float focal_length;
+	uint32_t iso;
+	uint32_t shutter_count;
+} image_data_t;
+
+// Information describing the camera
+typedef struct
+{
+	char* model;
+	char* serial_number;
+	char* lens;
+} camera_data_t;
+
 /******************************************************************
 						Function Prototypes
 *******************************************************************/
