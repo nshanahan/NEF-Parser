@@ -272,7 +272,7 @@ static char* get_makernote_string(struct ifd_entry_t* entry, void* buffer)
 
 /******************************************************************
 *
-* \details Helper function to string trailing whitespace in a string.
+* \details Helper function to strip trailing whitespace in a string.
 *
 * \param[in] str  : String to be processed.
 * \param[out] None
