@@ -39,7 +39,7 @@ const char banner[] = "**********************************************\n"
                       "**********************************************\n\n";
 
 // Additional verbosity for development debugging
-#define NEF_VERBOSE_DEBUG  0
+#define NEF_VERBOSE_DEBUG  1
 
 // Justification width for output formatting
 #define LEFT_JUSTIFY_WIDTH 14
@@ -47,8 +47,8 @@ const char banner[] = "**********************************************\n"
 /******************************************************************
                         Macros
 *******************************************************************/
-//#define nef_debug_print(...) printf(__VA_ARGS__)
-#define nef_debug_print(...)
+#define nef_debug_print(...) printf(__VA_ARGS__)
+//#define nef_debug_print(...)
 
 // Convert bytes to double words
 #define BYTES_TO_DWORDS(x) ((x) >> 2)
@@ -344,9 +344,17 @@ int main(int argc, char** argv)
     {
         image_data = malloc(sizeof(image_data_t));
         camera_data = malloc(sizeof(camera_data_t));
+
+        if (image_data == NULL || camera_data == NULL)
+        {
+            error = true;
+        }
+    }
+
+    if (!error)
+    {
         printf("%s", banner);
-        char* extension;
-        extension = strrchr(argv[1], '.');
+        char* extension = strrchr(argv[1], '.');
         // Verify file extension is correct
         if (strcmp(++extension, "NEF") != 0)
         {
@@ -379,6 +387,7 @@ int main(int argc, char** argv)
                 printf("%s\n", argv[1]);
             }
 
+            // Get the file size
             fseek(nef_file, 0, SEEK_END);
             size = ftell(nef_file);
             rewind(nef_file);
@@ -408,7 +417,8 @@ int main(int argc, char** argv)
                     nef_debug_print("Processing IFD0 entries...\n");
                     struct ifd_t* ifd0 = (struct ifd_t*)&buffer[nef_header->ifd0_offset];
                     nef_debug_print("IFD0 Entries = %d\n", ifd0->entries);
-                    uint32_t subifd_offset = 0;
+                    uint32_t* subifd_list = NULL;
+                    unsigned subifd_count = 0;
                     uint32_t exif_offset = 0;
 
                     for (unsigned i = 0; i < ifd0->entries; ++i)
@@ -430,9 +440,21 @@ int main(int argc, char** argv)
                         }
                         case EXIF_TAG_SUBIFD_OFFSET:
                         {
-                            // Entry word count determines if value is an offset or the actual value
-                            subifd_offset = (ifd0->entry[i].count > 2) ? *((uint32_t*)&buffer[ifd0->entry[i].value]) : ifd0->entry[i].value;
-                            nef_debug_print("Sub-IFD Offset = 0x%08X\n", subifd_offset);
+                            subifd_count = ifd0->entry[i].count;
+                            subifd_list = malloc(sizeof(uint32_t) * subifd_count);  
+
+                            if (subifd_list != NULL)
+                            {
+                                // Populate Sub-IFD offset list
+                                for (unsigned idx = 0; idx < subifd_count; ++idx)
+                                {
+                                    unsigned offset = ifd0->entry[i].value + (idx * sizeof(uint32_t));
+                                    // FIXME: Visual studio warns that a buffer overrun is possible
+                                    subifd_list[idx] = *(uint32_t*)&buffer[offset];
+                                    nef_debug_print("Sub-IFD%d Offset = 0x%08X\n", idx, subifd_list[idx]);
+                                }
+                            }
+
                             break;
                         }
                         case EXIF_TAG_DATE_TIME_ORIGINAL:
@@ -445,17 +467,22 @@ int main(int argc, char** argv)
                         }
                     }
 
-                    // Sub-IFD stores the image as a lossy jpeg
-                    // Calculate number of sub-IFD entries
-                    struct ifd_t* subifd = (struct ifd_t*)&buffer[subifd_offset];
-                    nef_debug_print("Sub-IFD Entries = %d\n", subifd->entries);
-
-                    for (unsigned i = 0; i < subifd->entries; ++i)
+                    // Sub-IFD0 stores the image as a lossy jpeg.
+                    // Sub-IFD1 stores full image using lossless compression.
+                    // It isn't clear what Sub-IFD2 contains.
+                    for (unsigned idx = 0; idx < subifd_count && subifd_list != NULL; ++idx)
                     {
+                        uint32_t subifd_offset = subifd_list[idx];
+                        struct ifd_t* subifd = (struct ifd_t*)&buffer[subifd_offset];
+                        nef_debug_print("Sub-IFD%d Entries = %d\n", idx, subifd->entries);
+
+                        for (unsigned i = 0; i < subifd->entries; ++i)
+                        {
 #if NEF_VERBOSE_DEBUG
-                        //TODO: Anything useful to do here?
-                        printf("Sub-IFD Tag = 0x%04X\n", subifd->entry[i].tag);
+                            //TODO: Anything useful to do here?
+                            printf("Sub-IFD%d Tag = 0x%04X\n", idx, subifd->entry[i].tag);
 #endif
+                        }
                     }
 
                     // Next IFD offset is located after the last IFD entry
