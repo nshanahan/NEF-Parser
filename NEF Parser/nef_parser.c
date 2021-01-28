@@ -467,22 +467,27 @@ int main(int argc, char** argv)
                         }
                     }
 
-                    // Sub-IFD0 stores the image as a lossy jpeg.
-                    // Sub-IFD1 stores full image using lossless compression.
-                    // It isn't clear what Sub-IFD2 contains.
-                    for (unsigned idx = 0; idx < subifd_count && subifd_list != NULL; ++idx)
+                    if (subifd_count != NULL)
                     {
-                        uint32_t subifd_offset = subifd_list[idx];
-                        struct ifd_t* subifd = (struct ifd_t*)&buffer[subifd_offset];
-                        nef_debug_print("Sub-IFD%d Entries = %d\n", idx, subifd->entries);
-
-                        for (unsigned i = 0; i < subifd->entries; ++i)
+                        // Sub-IFD0 stores the image as a lossy jpeg.
+                        // Sub-IFD1 stores full image using lossless compression.
+                        // It isn't clear what Sub-IFD2 contains.
+                        for (unsigned idx = 0; idx < subifd_count; ++idx)
                         {
+                            uint32_t subifd_offset = subifd_list[idx];
+                            struct ifd_t* subifd = (struct ifd_t*)&buffer[subifd_offset];
+                            nef_debug_print("Sub-IFD%d Entries = %d\n", idx, subifd->entries);
+
+                            for (unsigned i = 0; i < subifd->entries; ++i)
+                            {
 #if NEF_VERBOSE_DEBUG
-                            //TODO: Anything useful to do here?
-                            printf("Sub-IFD%d Tag = 0x%04X\n", idx, subifd->entry[i].tag);
+                                //TODO: Anything useful to do here?
+                                printf("Sub-IFD%d Tag = 0x%04X\n", idx, subifd->entry[i].tag);
 #endif
+                            }
                         }
+
+                        free(subifd_list);
                     }
 
                     // Next IFD offset is located after the last IFD entry
