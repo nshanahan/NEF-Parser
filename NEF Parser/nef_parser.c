@@ -467,7 +467,7 @@ int main(int argc, char** argv)
                         }
                     }
 
-                    if (subifd_count != NULL)
+                    if (subifd_list != NULL)
                     {
                         // Sub-IFD0 stores the image as a lossy jpeg.
                         // Sub-IFD1 stores full image using lossless compression.
