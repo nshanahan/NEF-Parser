@@ -100,12 +100,31 @@ uint8_t xlat[2][256] = {
 /******************************************************************
                         Function Prototypes
 *******************************************************************/
+static unsigned int round_up(unsigned int value, unsigned int multiple);
 static void decrypt(uint8_t* data, uint32_t size, char* serial_number, uint32_t shutter_count);
 static char* nikon_lens_id_lookup(uint8_t* key);
 static float get_tiff_rational(struct ifd_entry_t* entry, void* buffer);
 static char* get_makernote_string(struct ifd_entry_t* entry, void* buffer);
 static char* rstrip(char* str);
 static void display_data(void);
+
+/******************************************************************
+*
+* \details Round a value up to nearest multiple.
+*
+* \param[in] value    : Value to be rounded up.
+* \param[in] multiple : Multiple the value should be rounded to.
+* \param[out] None
+*
+* \return
+*   Return the rounded value.
+*
+*******************************************************************/
+static unsigned int round_up(unsigned int value, unsigned int multiple)
+{
+    unsigned remainder = value % multiple;
+    return (remainder == 0) ? value : value + (multiple - remainder);
+}
 
 /******************************************************************
 *
@@ -391,7 +410,7 @@ int main(int argc, char** argv)
             fseek(nef_file, 0, SEEK_END);
             size = ftell(nef_file);
             rewind(nef_file);
-            nef_debug_print("NEF File Size = %d bytes\n", size);
+            nef_debug_print("NEF File Size = %lu bytes\n", size);
             buffer = malloc(size);
 
             if (buffer == NULL)
@@ -441,20 +460,7 @@ int main(int argc, char** argv)
                         case EXIF_TAG_SUBIFD_OFFSET:
                         {
                             subifd_count = ifd0->entry[i].count;
-                            subifd_list = malloc(sizeof(uint32_t) * subifd_count);  
-
-                            if (subifd_list != NULL)
-                            {
-                                // Populate Sub-IFD offset list
-                                for (unsigned idx = 0; idx < subifd_count; ++idx)
-                                {
-                                    unsigned offset = ifd0->entry[i].value + (idx * sizeof(uint32_t));
-                                    // FIXME: Visual studio warns that a buffer overrun is possible
-                                    subifd_list[idx] = *(uint32_t*)&buffer[offset];
-                                    nef_debug_print("Sub-IFD%d Offset = 0x%08X\n", idx, subifd_list[idx]);
-                                }
-                            }
-
+                            subifd_list = (uint32_t*)&buffer[ifd0->entry[i].value];
                             break;
                         }
                         case EXIF_TAG_DATE_TIME_ORIGINAL:
@@ -467,27 +473,22 @@ int main(int argc, char** argv)
                         }
                     }
 
-                    if (subifd_list != NULL)
+                    // Sub-IFD0 stores the image as a lossy jpeg
+                    // Sub-IFD1 stores full image using lossless compression
+                    // Sub-IFD2 appears to be a duplicate of sub-IFD0
+                    for (unsigned idx = 0; idx < subifd_count; ++idx)
                     {
-                        // Sub-IFD0 stores the image as a lossy jpeg.
-                        // Sub-IFD1 stores full image using lossless compression.
-                        // It isn't clear what Sub-IFD2 contains.
-                        for (unsigned idx = 0; idx < subifd_count; ++idx)
+                        uint32_t subifd_offset = subifd_list[idx];
+                        struct ifd_t* subifd = (struct ifd_t*)&buffer[subifd_offset];
+                        nef_debug_print("Sub-IFD%d Entries = %d\n", idx, subifd->entries);
+
+                        for (unsigned i = 0; i < subifd->entries; ++i)
                         {
-                            uint32_t subifd_offset = subifd_list[idx];
-                            struct ifd_t* subifd = (struct ifd_t*)&buffer[subifd_offset];
-                            nef_debug_print("Sub-IFD%d Entries = %d\n", idx, subifd->entries);
-
-                            for (unsigned i = 0; i < subifd->entries; ++i)
-                            {
 #if NEF_VERBOSE_DEBUG
-                                //TODO: Anything useful to do here?
-                                printf("Sub-IFD%d Tag = 0x%04X\n", idx, subifd->entry[i].tag);
+                            //TODO: Not currently interested in Sub-IFD data
+                            printf("Sub-IFD%d Tag = 0x%04X\n", idx, subifd->entry[i].tag);
 #endif
-                            }
                         }
-
-                        free(subifd_list);
                     }
 
                     // Next IFD offset is located after the last IFD entry
@@ -599,7 +600,7 @@ int main(int argc, char** argv)
                             {
                                 // Makernote version is an undefined type and must be
                                 // handled differently than other EXIF string types.
-                                unsigned size = makernote->entry[i].count + 1;
+                                size = makernote->entry[i].count + 1;
                                 char* makernote_version = malloc(size);
 
                                 if (NULL != makernote_version)
@@ -640,17 +641,12 @@ int main(int argc, char** argv)
                             case NIKON_TAG_ISO_INFO:
                             {
                                 offset = makernote_offset + tiff_offset + makernote->entry[i].value;
+                                double raw = buffer[offset];
                                 // Calculate the ISO value
-                                double raw = (double)buffer[offset];
-                                image_data->iso = 100 * pow(2, raw / 12 - 5);
-                                unsigned remainder = image_data->iso % 10;
-                                // Raw ISO value is stored as a single byte.
-                                // Need to round up if value is not divisble by 10.
-                                if (remainder != 0)
-                                {
-                                    image_data->iso += 10 - remainder;
-                                }
-
+                                unsigned int iso = (unsigned int)(100 * pow(2, raw / 12 - 5));
+                                // Raw ISO value is stored as a single byte
+                                // Need to round up if value is not divisble by 10
+                                image_data->iso = round_up(iso, 10);
                                 break;
                             }
                             case NIKON_TAG_LENS_TYPE:
